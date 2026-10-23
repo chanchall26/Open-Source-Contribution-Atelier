@@ -86,6 +86,8 @@ docker compose up --build
 
 That starts Postgres, Redis, Django, the notifications worker, and Vite. See the [Docker hot-reload guide](docs/DOCKER_HOT_RELOAD.md) for development mounts.
 
+Database credentials come from `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD`. The defaults work for local dev; to change them, copy `.env.example` to `.env` in the repo root. Use your own password anywhere outside local dev.
+
 ## Useful commands
 
 | Area                   | Command                                                 |
