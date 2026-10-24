@@ -88,6 +88,8 @@ That starts Postgres, Redis, Django, the notifications worker, and Vite. See the
 
 Database credentials come from `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD`. The defaults work for local dev; to change them, copy `.env.example` to `.env` in the repo root. Use your own password anywhere outside local dev.
 
+Keep these values to letters, digits, `-`, `_` and `.`, since they are inserted into `DATABASE_URL` without URL-encoding (characters such as `#`, `@`, `:`, `/` or `%` would break it). Postgres only applies them when the `postgres_data` volume is first created, so after changing them on an existing setup either run `docker compose down -v` (this wipes the local database) or update the role/password/database inside Postgres to match.
+
 ## Useful commands
 
 | Area                   | Command                                                 |
