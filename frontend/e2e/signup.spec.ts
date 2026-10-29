@@ -59,6 +59,13 @@ test.describe("Signup Flow", () => {
       .evaluate((el: HTMLInputElement) => el.validity.valid);
     expect(emailValid).toBe(false);
     await expect(page).toHaveURL(/\/signup/);
+    // flush a macrotask and a frame so a late submit/request would have fired
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => setTimeout(resolve, 0)),
+        ),
+    );
     expect(signupCalls).toBe(0);
   });
 
@@ -145,7 +152,7 @@ test.describe("Signup Flow", () => {
     await page.getByRole("button", { name: submitName }).click();
 
     await expect(page.getByRole("alert")).toContainText(
-      /Email already exists\.|Failed to create account/,
+      "Email already exists.",
     );
     await expect(page).toHaveURL(/\/signup/);
   });
