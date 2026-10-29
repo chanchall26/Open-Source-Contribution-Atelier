@@ -74,6 +74,18 @@ async function triggerSync() {
   await Promise.all(waits);
 }
 
+// Fire a Background Sync "sync" event for the quiz tag and wait for it.
+async function triggerSyncEvent() {
+  const waits: Promise<unknown>[] = [];
+  for (const cb of swListeners["sync"] || []) {
+    cb({
+      tag: "sync-quiz-progress",
+      waitUntil: (p: Promise<unknown>) => waits.push(p),
+    });
+  }
+  await Promise.all(waits);
+}
+
 const okResponse = { ok: true, status: 200 };
 const status = (code: number) => ({ ok: false, status: code });
 
@@ -147,6 +159,24 @@ describe("service worker offline quiz replay", () => {
     ]);
   });
 
+  it("replays in primary-key (id) order, not queuedAt order", async () => {
+    // Queued first, but its id sorts last. sw.js does not sort: it sends the
+    // records in the order getAll() returns them (key order in real IDB), so
+    // the earlier submission is sent second. This pins the current behaviour;
+    // strict queue-time order would need a sort on queuedAt in sw.js.
+    const first = queue("quiz-sync-q9-100", "q9");
+    const second = queue("quiz-sync-q1-200", "q1");
+    expect(first.queuedAt).toBeLessThan(second.queuedAt);
+    fetchMock.mockResolvedValue(okResponse);
+
+    await triggerSync();
+
+    expect(postedNonces(fetchMock)).toEqual([
+      "quiz-sync-q1-200",
+      "quiz-sync-q9-100",
+    ]);
+  });
+
   it("keeps every item queued while the network is still down", async () => {
     queue("quiz-sync-q1-100", "q1");
     queue("quiz-sync-q2-200", "q2");
@@ -162,10 +192,11 @@ describe("service worker offline quiz replay", () => {
     queue("quiz-sync-q1-100", "q1");
     queue("quiz-sync-q2-200", "q2");
     queue("quiz-sync-q3-300", "q3");
-    fetchMock
-      .mockResolvedValueOnce(okResponse)
-      .mockResolvedValueOnce(status(503))
-      .mockResolvedValueOnce(okResponse);
+    fetchMock.mockImplementation(async (_url, init) =>
+      JSON.parse((init as RequestInit).body as string).question_id === "q2"
+        ? status(503)
+        : okResponse,
+    );
 
     await triggerSync();
 
@@ -209,19 +240,21 @@ describe("service worker offline quiz replay", () => {
     queue("quiz-sync-q2-200", "q2");
 
     // First reconnect: q1 goes through, q2 hits a server error.
-    fetchMock
-      .mockResolvedValueOnce(okResponse)
-      .mockResolvedValueOnce(status(500));
+    fetchMock.mockImplementation(async (_url, init) =>
+      JSON.parse((init as RequestInit).body as string).question_id === "q2"
+        ? status(500)
+        : okResponse,
+    );
     await triggerSync();
     expect([...store.keys()]).toEqual(["quiz-sync-q2-200"]);
 
     // Connection drops again: q2 stays queued.
-    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     await triggerSync();
     expect([...store.keys()]).toEqual(["quiz-sync-q2-200"]);
 
     // Next reconnect succeeds.
-    fetchMock.mockResolvedValueOnce(okResponse);
+    fetchMock.mockResolvedValue(okResponse);
     await triggerSync();
     expect(store.size).toBe(0);
 
@@ -243,19 +276,36 @@ describe("service worker offline quiz replay", () => {
     ]);
   });
 
-  it("does not send a submission twice when two sync triggers overlap", async () => {
+  it("does not send a submission twice when a sync event and a page message overlap", async () => {
     queue("quiz-sync-q1-100", "q1");
     queue("quiz-sync-q2-200", "q2");
     fetchMock.mockResolvedValue(okResponse);
 
-    // e.g. the page's TRIGGER_QUIZ_SYNC message and a Background Sync event
-    // arriving at the same moment after a reconnect.
-    await Promise.all([triggerSync(), triggerSync()]);
+    // Background Sync event and the page's TRIGGER_QUIZ_SYNC message arriving
+    // together after a reconnect.
+    await Promise.all([triggerSyncEvent(), triggerSync()]);
 
-    expect(postedNonces(fetchMock).sort()).toEqual([
+    expect(postedNonces(fetchMock)).toEqual([
       "quiz-sync-q1-100",
       "quiz-sync-q2-200",
     ]);
     expect(store.size).toBe(0);
   });
+
+  it("does not send a submission twice when two page messages overlap", async () => {
+    queue("quiz-sync-q1-100", "q1");
+    queue("quiz-sync-q2-200", "q2");
+    fetchMock.mockResolvedValue(okResponse);
+
+    await Promise.all([triggerSync(), triggerSync()]);
+
+    expect(postedNonces(fetchMock)).toEqual([
+      "quiz-sync-q1-100",
+      "quiz-sync-q2-200",
+    ]);
+    expect(store.size).toBe(0);
+  });
+
+  // Known limit, not asserted: a trigger that arrives mid-run joins that run,
+  // so items queued after the run's getAll() are sent on the next trigger.
 });
