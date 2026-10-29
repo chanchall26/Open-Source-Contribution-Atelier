@@ -38,6 +38,10 @@ and the workflow adds a warning annotation. Above the limit the row is
 `OVER BUDGET` and the job fails, as before. When a PR gets a `REVIEW` row,
 reviewers should ask whether the growth is intended.
 
+On pull requests the workflow also builds the base branch and posts a comment with the
+JS and CSS size change (`frontend/scripts/bundle-size-report.ts`). The comment is best
+effort on fork PRs, where the token is read only; the same report is in the job summary.
+
 ### Lighthouse
 
 `lighthouserc.cjs` reads its thresholds straight from the `lighthouse` section of
