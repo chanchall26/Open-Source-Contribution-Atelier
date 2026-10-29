@@ -564,7 +564,7 @@ export function LessonPage() {
 
   // Save quiz draft whenever quiz state changes
   useEffect(() => {
-    if (!hasRestoredDraft || quizFeedback !== null) return;
+    if (selectedOption === null || quizFeedback !== null) return;
     quizDraft.saveDraft(
       currentQuizIndex,
       selectedOption,
@@ -576,7 +576,6 @@ export function LessonPage() {
     selectedOption,
     quizFeedback,
     timeLeft,
-    hasRestoredDraft,
     quizDraft,
   ]);
 
